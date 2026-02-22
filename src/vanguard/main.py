@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 
 from .actions import draft_alert_email
 from .config import Settings
-from .embeddings import GeminiEmbedder
 from .engine import VanguardEngine
 from .health import run_startup_health
 from .ingestion import ingest_all
@@ -35,7 +34,11 @@ async def run(route: str, dry_run: bool) -> int:
     settings = Settings.from_env()
     await run_startup_health(settings)
 
-    embedder = GeminiEmbedder(settings.gemini_api_key) if settings.enable_embeddings else None
+    embedder = None
+    if settings.enable_embeddings:
+        from .embeddings import GeminiEmbedder
+
+        embedder = GeminiEmbedder(settings.gemini_api_key)
     storage = Storage(settings.database_url, embedder=embedder)
     reasoner = VanguardReasoner(
         api_key=settings.gemini_api_key,

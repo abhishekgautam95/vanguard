@@ -5,12 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import asyncpg
 
-from .embeddings import Embedder
 from .schemas import LLMRiskResponse, RiskEvent
+
+if TYPE_CHECKING:
+    from .embeddings import Embedder
 
 
 class Storage:

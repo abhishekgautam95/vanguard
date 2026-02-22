@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from typing import Any
@@ -9,16 +10,6 @@ from typing import Any
 from pydantic import ValidationError
 
 from .schemas import LLMRiskResponse, RiskEvent
-
-try:
-    import google.generativeai as genai
-except ImportError:  # pragma: no cover - optional runtime provider
-    genai = None
-
-try:
-    from ollama import AsyncClient
-except ImportError:  # pragma: no cover - optional runtime provider
-    AsyncClient = None
 
 
 class ReasoningError(RuntimeError):
@@ -51,14 +42,20 @@ class VanguardReasoner:
         if self.llm_provider == "gemini":
             if not api_key:
                 raise ValueError("Missing GEMINI_API_KEY for Gemini provider.")
+            try:
+                import google.generativeai as genai
+            except ImportError as exc:  # pragma: no cover - optional runtime provider
+                raise ValueError("google-generativeai package is not installed.") from exc
             if genai is None:
                 raise ValueError("google-generativeai package is not installed.")
             genai.configure(api_key=api_key)
             self.model = genai.GenerativeModel(model_name)
             return
 
-        if AsyncClient is None:
-            raise ValueError("ollama package is not installed. Install it via requirements.")
+        try:
+            from ollama import AsyncClient
+        except ImportError as exc:  # pragma: no cover - optional runtime provider
+            raise ValueError("ollama package is not installed. Install it via requirements.") from exc
         self.ollama_client = AsyncClient(host=self.ollama_base_url)
 
     @staticmethod
@@ -125,7 +122,7 @@ Schema:
         raw_text = ""
 
         if self.llm_provider == "gemini":
-            raw = self.model.generate_content(prompt)
+            raw = await asyncio.to_thread(self.model.generate_content, prompt)
             raw_text = getattr(raw, "text", "") or ""
         else:
             response = await self.ollama_client.chat(

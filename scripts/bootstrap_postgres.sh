@@ -35,7 +35,7 @@ EOF
 run_as_postgres() {
   local sql="$1"
   if command -v sudo >/dev/null 2>&1; then
-    sudo -u postgres psql -v ON_ERROR_STOP=1 -Atqc "$sql"
+    (cd /tmp && sudo -u postgres psql -v ON_ERROR_STOP=1 -Atqc "$sql")
   elif [[ "${USER:-}" == "postgres" ]]; then
     psql -v ON_ERROR_STOP=1 -Atqc "$sql"
   else

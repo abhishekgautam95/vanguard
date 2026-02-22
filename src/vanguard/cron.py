@@ -9,7 +9,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from .config import Settings
-from .embeddings import GeminiEmbedder
 from .engine import VanguardEngine
 from .health import run_startup_health
 from .ingestion import ingest_all
@@ -47,7 +46,11 @@ async def process_route(
 
 async def run_once(settings: Settings, dry_run: bool = False) -> int:
     """Execute one monitoring cycle across all configured routes."""
-    embedder = GeminiEmbedder(settings.gemini_api_key) if settings.enable_embeddings else None
+    embedder = None
+    if settings.enable_embeddings:
+        from .embeddings import GeminiEmbedder
+
+        embedder = GeminiEmbedder(settings.gemini_api_key)
     storage = Storage(settings.database_url, embedder=embedder)
     reasoner = VanguardReasoner(
         api_key=settings.gemini_api_key,

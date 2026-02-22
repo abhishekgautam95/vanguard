@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 
 from .actions import draft_alert_email
 from .config import Settings
-from .embeddings import GeminiEmbedder
 from .engine import VanguardEngine
 from .health import run_startup_health
 from .notifications import AlertService
@@ -74,7 +73,11 @@ async def run_simulation(args: argparse.Namespace) -> int:
     await run_startup_health(settings)
 
     event = _build_simulated_event(args)
-    embedder = GeminiEmbedder(settings.gemini_api_key) if settings.enable_embeddings else None
+    embedder = None
+    if settings.enable_embeddings:
+        from .embeddings import GeminiEmbedder
+
+        embedder = GeminiEmbedder(settings.gemini_api_key)
     storage = Storage(settings.database_url, embedder=embedder)
     reasoner = VanguardReasoner(
         api_key=settings.gemini_api_key,

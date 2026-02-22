@@ -94,6 +94,8 @@ class Settings:
             raise ValueError("LLM_PROVIDER must be either 'gemini' or 'ollama'.")
         if llm_provider == "gemini" and not gemini_api_key:
             raise ValueError("Missing GEMINI_API_KEY in environment for Gemini provider.")
+        if enable_embeddings and not gemini_api_key:
+            raise ValueError("ENABLE_EMBEDDINGS=true requires GEMINI_API_KEY.")
 
         if not database_url:
             raise ValueError("Missing DATABASE_URL in environment.")
