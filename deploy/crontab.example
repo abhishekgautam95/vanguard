@@ -1,0 +1,2 @@
+# Run Vanguard one cycle every hour at minute 0
+0 * * * * cd /home/abhishek/AI_agent_building/vanguard && /home/abhishek/AI_agent_building/vanguard/.venv/bin/python -m src.vanguard.cron --once >> /home/abhishek/AI_agent_building/vanguard/vanguard_cron.log 2>&1

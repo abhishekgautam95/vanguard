@@ -1,0 +1,16 @@
+[Unit]
+Description=Project Vanguard Autonomous Monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=abhishek
+WorkingDirectory=/home/abhishek/AI_agent_building/vanguard
+EnvironmentFile=/home/abhishek/AI_agent_building/vanguard/.env
+ExecStart=/home/abhishek/AI_agent_building/vanguard/.venv/bin/python -m src.vanguard.cron
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

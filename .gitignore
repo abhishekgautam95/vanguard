@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Env and secrets
+.env
+*.pem
+*.key
+
+# Build / package
+build/
+dist/
+*.egg-info/
+
+# Tooling / editors
+.idea/
+.vscode/
+.DS_Store
+
+# Runtime artifacts
+logs/
+run/
