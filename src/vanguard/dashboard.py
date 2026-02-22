@@ -135,7 +135,17 @@ def _tail_activity(log_path: Path, lines: int = 50) -> list[str]:
     data = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
     if not data:
         return ["No activity events yet."]
-    return data[-lines:]
+
+    noise_markers = (
+        "FutureWarning:",
+        "deprecated-generative-ai-python",
+        "import google.generativeai as genai",
+        "All support for the `google.generativeai` package has ended",
+    )
+    filtered = [line for line in data if line.strip() and not any(marker in line for marker in noise_markers)]
+    if not filtered:
+        return ["No activity events yet."]
+    return filtered[-lines:]
 
 
 @st.cache_data(ttl=60, show_spinner=False)
