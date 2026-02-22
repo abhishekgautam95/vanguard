@@ -137,12 +137,19 @@ def _tail_activity(log_path: Path, lines: int = 50) -> list[str]:
         return ["No activity events yet."]
 
     noise_markers = (
-        "FutureWarning:",
+        "futurewarning:",
         "deprecated-generative-ai-python",
         "import google.generativeai as genai",
-        "All support for the `google.generativeai` package has ended",
+        "all support for the `google.generativeai` package has ended",
+        "switch to the `google.genai` package",
+        "it will no longer be receiving",
+        "see readme for more details",
     )
-    filtered = [line for line in data if line.strip() and not any(marker in line for marker in noise_markers)]
+    filtered = [
+        line
+        for line in data
+        if line.strip() and not any(marker in line.lower() for marker in noise_markers)
+    ]
     if not filtered:
         return ["No activity events yet."]
     return filtered[-lines:]
