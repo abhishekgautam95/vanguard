@@ -30,6 +30,7 @@ class Settings:
     retry_lookback_hours: int
     retry_batch_size: int
     dashboard_password: str
+    log_level: str
 
     def redacted_snapshot(self) -> dict[str, object]:
         """Return safe-to-log config snapshot with sensitive values masked."""
@@ -53,6 +54,7 @@ class Settings:
                 "RETRY_LOOKBACK_HOURS": self.retry_lookback_hours,
                 "RETRY_BATCH_SIZE": self.retry_batch_size,
                 "DASHBOARD_PASSWORD": self.dashboard_password,
+                "LOG_LEVEL": self.log_level,
             }
         )
 
@@ -89,6 +91,7 @@ class Settings:
         retry_lookback_hours = int(os.getenv("RETRY_LOOKBACK_HOURS", "24"))
         retry_batch_size = int(os.getenv("RETRY_BATCH_SIZE", "50"))
         dashboard_password = os.getenv("DASHBOARD_PASSWORD", "").strip()
+        log_level = os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO"
 
         if llm_provider not in {"gemini", "ollama"}:
             raise ValueError("LLM_PROVIDER must be either 'gemini' or 'ollama'.")
@@ -111,6 +114,9 @@ class Settings:
             raise ValueError("RETRY_LOOKBACK_HOURS must be at least 1.")
         if retry_batch_size < 1:
             raise ValueError("RETRY_BATCH_SIZE must be at least 1.")
+        valid_log_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        if log_level not in valid_log_levels:
+            raise ValueError(f"LOG_LEVEL must be one of {valid_log_levels}.")
 
         return cls(
             gemini_api_key=gemini_api_key,
@@ -131,4 +137,5 @@ class Settings:
             retry_lookback_hours=retry_lookback_hours,
             retry_batch_size=retry_batch_size,
             dashboard_password=dashboard_password,
+            log_level=log_level,
         )
