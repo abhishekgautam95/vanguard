@@ -195,6 +195,79 @@ class Storage:
                 error_message,
             )
 
+    async def save_performance_log(
+        self,
+        component: str,
+        operation: str,
+        elapsed_ms: float,
+        success: bool = True,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        """Persist a performance timing record."""
+        if self._pool is None:
+            return
+
+        query = """
+            INSERT INTO performance_logs (component, operation, elapsed_ms, success, extra)
+            VALUES ($1, $2, $3, $4, $5::jsonb)
+        """
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                query,
+                component,
+                operation,
+                elapsed_ms,
+                success,
+                json.dumps(extra) if extra is not None else None,
+            )
+
+    async def get_performance_stats(
+        self,
+        lookback_hours: int = 24,
+    ) -> list[dict[str, Any]]:
+        """Return aggregated performance stats per component/operation."""
+        if self._pool is None:
+            return []
+
+        query = """
+            SELECT
+                component,
+                operation,
+                count(*) AS total_calls,
+                round(avg(elapsed_ms)::numeric, 2) AS avg_ms,
+                round(min(elapsed_ms)::numeric, 2) AS min_ms,
+                round(max(elapsed_ms)::numeric, 2) AS max_ms,
+                round(
+                    (sum(CASE WHEN success THEN 1 ELSE 0 END)::numeric
+                     / count(*)) * 100,
+                    1
+                ) AS success_pct
+            FROM performance_logs
+            WHERE recorded_at > NOW() - ($1::text || ' hours')::interval
+            GROUP BY component, operation
+            ORDER BY avg_ms DESC
+        """
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(query, str(lookback_hours))
+        return [dict(row) for row in rows]
+
+    async def cleanup_performance_logs(self, retention_days: int = 30) -> int:
+        """Delete old performance log rows. Returns number of rows deleted."""
+        if self._pool is None:
+            return 0
+
+        query = """
+            DELETE FROM performance_logs
+            WHERE recorded_at < NOW() - ($1::text || ' days')::interval
+        """
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(query, str(retention_days))
+        # asyncpg returns "DELETE N" as a string
+        try:
+            return int(result.split()[-1])
+        except (IndexError, ValueError):
+            return 0
+
     async def get_retry_candidates(
         self,
         limit: int = 50,

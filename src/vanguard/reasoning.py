@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from .schemas import LLMRiskResponse, RiskEvent
+from .monitor import async_timed
 
 
 class ReasoningError(RuntimeError):
@@ -122,14 +123,17 @@ Schema:
         raw_text = ""
 
         if self.llm_provider == "gemini":
-            raw = await asyncio.to_thread(self.model.generate_content, prompt)
+            model_name = getattr(self.model, "model_name", "gemini")
+            async with async_timed("llm", "gemini_inference", extra={"model": model_name}):
+                raw = await asyncio.to_thread(self.model.generate_content, prompt)
             raw_text = getattr(raw, "text", "") or ""
         else:
-            response = await self.ollama_client.chat(
-                model=self.ollama_model,
-                messages=[{"role": "user", "content": prompt}],
-                format="json",
-            )
+            async with async_timed("llm", "ollama_inference", extra={"model": self.ollama_model}):
+                response = await self.ollama_client.chat(
+                    model=self.ollama_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    format="json",
+                )
             raw_text = str((response.get("message") or {}).get("content") or "")
 
         try:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .actions import build_cost_benefit_analysis, should_trigger_reroute
+from .monitor import async_timed
 from .reasoning import VanguardReasoner
 from .schemas import DecisionResult, LLMRiskResponse
 from .scoring import combine_baseline_and_llm, compute_baseline_components, compute_baseline_risk
@@ -37,12 +38,14 @@ class VanguardEngine:
         else:
             prompt_payload = self.reasoner.build_cache_payload(route, events, baseline_risk)
             key = self.storage.cache_key(route, prompt_payload)
-            cached = await self.storage.get_cached_reasoning(key)
+            async with async_timed("database", "cache_lookup"):
+                cached = await self.storage.get_cached_reasoning(key)
             if cached:
                 llm_result = cached
             else:
                 llm_result, _ = await self.reasoner.evaluate(route, events, baseline_risk)
-                await self.storage.set_cached_reasoning(key, llm_result)
+                async with async_timed("database", "cache_write"):
+                    await self.storage.set_cached_reasoning(key, llm_result)
 
         final_risk = combine_baseline_and_llm(
             baseline_risk=baseline_risk,
