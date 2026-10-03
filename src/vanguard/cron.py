@@ -12,9 +12,18 @@ from .config import Settings
 from .engine import VanguardEngine
 from .health import run_startup_health
 from .ingestion import ingest_all
+from .monitor import async_timed, error_tracker, get_logger
 from .notifications import AlertService
 from .reasoning import VanguardReasoner
 from .storage import Storage
+
+_log = get_logger("vanguard.cron")
+
+
+async def _persist_perf(storage: Storage, records: list) -> None:
+    """Persist the first PerformanceRecord from a timed context manager result."""
+    if records:
+        await storage.save_performance_log(**records[0].as_dict())
 
 
 async def process_route(
@@ -26,22 +35,41 @@ async def process_route(
     dry_run: bool,
 ) -> None:
     """Run ingestion, reasoning, and notifications for a single route."""
-    events = await ingest_all(route, openweather_api_key=settings.openweather_api_key)
-    if not dry_run:
-        await storage.save_events(events)
+    async with async_timed("ingestion", "ingest_all", extra={"route": route}) as rec:
+        events = await ingest_all(route, openweather_api_key=settings.openweather_api_key)
+    await _persist_perf(storage, rec)
 
-    result = await engine.evaluate_route(route=route, events=events)
+    if not dry_run:
+        async with async_timed("database", "save_events", extra={"route": route}) as rec:
+            await storage.save_events(events)
+        await _persist_perf(storage, rec)
+
+    async with async_timed("engine", "evaluate_route", extra={"route": route}) as rec:
+        result = await engine.evaluate_route(route=route, events=events)
+    await _persist_perf(storage, rec)
+
+    _log.info(
+        "route_evaluated",
+        extra={
+            "_vg_route": route,
+            "_vg_risk": result.final_risk,
+            "_vg_delay": result.predicted_delay_days,
+            "_vg_action": result.recommended_action,
+        },
+    )
     print(
         f"[ROUTE] {route} | risk={result.final_risk} | "
         f"delay={result.predicted_delay_days} | action={result.recommended_action}"
     )
 
     if result.requires_escalation:
-        await alert_service.dispatch(
-            recipients=settings.alert_recipients,
-            result=result,
-            dry_run=dry_run,
-        )
+        async with async_timed("notifications", "alert_dispatch", extra={"route": route}) as rec:
+            await alert_service.dispatch(
+                recipients=settings.alert_recipients,
+                result=result,
+                dry_run=dry_run,
+            )
+        await _persist_perf(storage, rec)
 
 
 async def run_once(settings: Settings, dry_run: bool = False) -> int:
@@ -117,6 +145,7 @@ async def monitoring_loop(dry_run: bool = False) -> int:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            error_tracker.record("monitoring_loop", exc)
             print(f"[LOOP_ERROR] {exc}")
             await asyncio.sleep(300)
 

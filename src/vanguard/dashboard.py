@@ -106,6 +106,35 @@ async def _fetch_dashboard_data(database_url: str) -> tuple[list[dict], list[dic
     return [dict(row) for row in route_trend_rows], [dict(row) for row in latest_events_rows], [dict(row) for row in alert_rows]
 
 
+async def _fetch_perf_stats(database_url: str) -> list[dict]:
+    """Fetch aggregated performance stats from performance_logs table."""
+    conn = await asyncpg.connect(database_url)
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT
+                component,
+                operation,
+                count(*) AS total_calls,
+                round(avg(elapsed_ms)::numeric, 2) AS avg_ms,
+                round(min(elapsed_ms)::numeric, 2) AS min_ms,
+                round(max(elapsed_ms)::numeric, 2) AS max_ms,
+                round(
+                    (sum(CASE WHEN success THEN 1 ELSE 0 END)::numeric
+                     / count(*)) * 100,
+                    1
+                ) AS success_pct
+            FROM performance_logs
+            WHERE recorded_at > NOW() - interval '24 hours'
+            GROUP BY component, operation
+            ORDER BY avg_ms DESC
+            """
+        )
+    finally:
+        await conn.close()
+    return [dict(row) for row in rows]
+
+
 async def _probe_ollama(base_url: str, model: str) -> tuple[str, str]:
     """Return ollama health label and detail string."""
     url = f"{base_url.rstrip('/')}/api/tags"
@@ -163,6 +192,14 @@ def get_dashboard_data(database_url: str) -> tuple[list[dict], list[dict], list[
 @st.cache_data(ttl=30, show_spinner=False)
 def get_ollama_status(base_url: str, model: str) -> tuple[str, str]:
     return asyncio.run(_probe_ollama(base_url, model))
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_perf_stats(database_url: str) -> list[dict]:
+    try:
+        return asyncio.run(_fetch_perf_stats(database_url))
+    except Exception:
+        return []
 
 
 def _status_class(status: str) -> str:
@@ -331,6 +368,105 @@ def _render_live_activity(log_path: Path) -> None:
     )
 
 
+def _render_performance_monitoring(database_url: str) -> None:
+    """Render the performance monitoring section with charts and metrics."""
+    st.subheader("Performance Monitoring")
+
+    perf_stats = get_perf_stats(database_url)
+    if not perf_stats:
+        st.info("No performance data available yet. Metrics are collected after the first monitoring cycle.")
+        return
+
+    df = pd.DataFrame(perf_stats)
+
+    # Summary metric cards
+    cols = st.columns(3)
+    total_calls = int(df["total_calls"].sum())
+    overall_avg_ms = float(df["avg_ms"].mean())
+    overall_success = float(df["success_pct"].mean())
+
+    cards = [
+        ("Total Operations (24h)", str(total_calls)),
+        ("Avg Latency (ms)", f"{overall_avg_ms:.1f}"),
+        ("Avg Success Rate", f"{overall_success:.1f}%"),
+    ]
+    for col, (label, value) in zip(cols, cards):
+        col.markdown(
+            f"""
+            <div class="glass-card">
+              <div class="metric-label">{label}</div>
+              <div class="metric-value">{value}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("---")
+    left, right = st.columns(2)
+
+    with left:
+        st.markdown("#### Average Response Time by Component")
+        if px is not None:
+            fig = px.bar(
+                df,
+                x="operation",
+                y="avg_ms",
+                color="component",
+                text_auto=True,
+                template="plotly_dark",
+                labels={"avg_ms": "Avg ms", "operation": "Operation"},
+            )
+            fig.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=20, r=20, t=20, b=20),
+                showlegend=True,
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.dataframe(df[["component", "operation", "avg_ms"]], use_container_width=True)
+
+    with right:
+        st.markdown("#### Success Rate by Operation")
+        if px is not None:
+            fig = px.bar(
+                df,
+                x="operation",
+                y="success_pct",
+                color="component",
+                text_auto=True,
+                template="plotly_dark",
+                range_y=[0, 100],
+                labels={"success_pct": "Success %", "operation": "Operation"},
+            )
+            fig.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=20, r=20, t=20, b=20),
+                showlegend=True,
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.dataframe(df[["component", "operation", "success_pct"]], use_container_width=True)
+
+    st.markdown("#### Detailed Performance Table")
+    st.dataframe(
+        df[["component", "operation", "total_calls", "avg_ms", "min_ms", "max_ms", "success_pct"]].rename(
+            columns={
+                "component": "Component",
+                "operation": "Operation",
+                "total_calls": "Calls",
+                "avg_ms": "Avg ms",
+                "min_ms": "Min ms",
+                "max_ms": "Max ms",
+                "success_pct": "Success %",
+            }
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
 def _render_dashboard(settings: Settings, trend: list[dict], events: list[dict], alerts: list[dict]) -> None:
     trend_df = pd.DataFrame(trend)
     events_df = pd.DataFrame(events)
@@ -422,6 +558,7 @@ def main() -> None:
             options=[
                 "📡 Dashboard",
                 "🗃️ Historical Data",
+                "📊 Performance Monitoring",
                 "🧪 Simulation Mode",
                 "⚙️ Settings",
             ],
@@ -438,6 +575,8 @@ def main() -> None:
         _render_dashboard(settings, trend=trend, events=events, alerts=alerts)
     elif section == "🗃️ Historical Data":
         _render_historical_data(events=events, alerts=alerts)
+    elif section == "📊 Performance Monitoring":
+        _render_performance_monitoring(settings.database_url)
     elif section == "🧪 Simulation Mode":
         _render_simulation_mode()
     else:

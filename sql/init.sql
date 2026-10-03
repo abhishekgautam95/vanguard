@@ -45,3 +45,16 @@ CREATE INDEX IF NOT EXISTS idx_alert_dispatch_log_key_time
 
 CREATE INDEX IF NOT EXISTS idx_risk_events_route_time
     ON risk_events (route, event_time DESC);
+
+CREATE TABLE IF NOT EXISTS performance_logs (
+    id BIGSERIAL PRIMARY KEY,
+    component TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    elapsed_ms DOUBLE PRECISION NOT NULL,
+    success BOOLEAN NOT NULL DEFAULT TRUE,
+    extra JSONB,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_performance_logs_component_time
+    ON performance_logs (component, recorded_at DESC);

@@ -13,6 +13,7 @@ import xml.etree.ElementTree as et
 import aiohttp
 
 from .schemas import RiskEvent
+from .monitor import async_timed, error_tracker, logger as _log
 
 _GOOGLE_NEWS_RSS = "https://news.google.com/rss/search"
 _BAB_EL_MANDEB = {"lat": 12.7, "lon": 43.3}
@@ -66,9 +67,10 @@ class NewsIngestor:
         query = "&".join(f"{key}={quote_plus(str(value))}" for key, value in params.items())
         url = f"{_GOOGLE_NEWS_RSS}?{query}"
 
-        async with session.get(url, timeout=15) as response:
-            response.raise_for_status()
-            xml_body = await response.text()
+        async with async_timed("ingestion", "news_fetch"):
+            async with session.get(url, timeout=15) as response:
+                response.raise_for_status()
+                xml_body = await response.text()
 
         root = et.fromstring(xml_body)
         events: list[RiskEvent] = []
@@ -207,9 +209,10 @@ class WeatherIngestor:
         query = "&".join(f"{key}={quote_plus(str(value))}" for key, value in params.items())
         url = f"https://api.openweathermap.org/data/2.5/weather?{query}"
 
-        async with session.get(url, timeout=15) as response:
-            response.raise_for_status()
-            payload = await response.json()
+        async with async_timed("ingestion", "weather_fetch"):
+            async with session.get(url, timeout=15) as response:
+                response.raise_for_status()
+                payload = await response.json()
 
         severity, reason = self._map_weather_to_severity(payload)
 
